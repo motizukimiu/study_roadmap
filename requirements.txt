@@ -1,2 +1,4 @@
+streamlit
+st-supabase-connection
+pandas
 streamlit-authenticator
-st-gsheets-connection
