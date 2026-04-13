@@ -7,11 +7,17 @@ import streamlit_authenticator as stauth
 # ページ基本設定
 st.set_page_config(page_title="勉強管理システム", layout="wide")
 
-# --- 0. データベース接続 ---
+# --- 0. データベース接続 (直接指定版) ---
 try:
-    conn = st.connection("supabase", type=SupabaseConnection)
+    # Secretsの中身を直接指定して接続します
+    conn = st.connection(
+        "supabase",
+        type=SupabaseConnection,
+        url=st.secrets["connections"]["supabase"]["url"],
+        key=st.secrets["connections"]["supabase"]["key"]
+    )
 except Exception as e:
-    st.error(f"データベース接続エラー: {e}")
+    st.error(f"接続エラーが発生しました。設定を確認してください: {e}")
     st.stop()
 
 # --- 1. データ取得関数 ---
