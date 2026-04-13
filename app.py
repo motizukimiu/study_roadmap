@@ -63,7 +63,19 @@ authenticator = stauth.Authenticate(
     cookie_expiry_days=30
 )
 
-name, auth_status, username = authenticator.login("main")
+# --- 修正前 ---
+# name, auth_status, username = authenticator.login("main")
+
+# ✅ 修正後 (最新バージョンに対応)
+authenticator.login("main")
+
+# 認証の状態（成否）は st.session_state から直接取り出します
+auth_status = st.session_state.get("authentication_status")
+name = st.session_state.get("name")
+username = st.session_state.get("username")
+
+if auth_status:
+    # ここから下に、ログイン成功後のメイン処理（st.title("勉強管理") など）が続く
 
 # --- 3. メイン処理 ---
 if auth_status:
