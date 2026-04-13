@@ -62,7 +62,7 @@ authenticator = stauth.Authenticate(
     cookie_expiry_days=30
 )
 
-# ログインフォームを表示（戻り値を受け取らず、セッションを参照する方式に変更）
+# ログインフォームを表示
 authenticator.login("main")
 
 # セッション状態から情報を取得
@@ -71,10 +71,6 @@ name = st.session_state.get("name")
 username = st.session_state.get("username")
 
 # --- 3. メイン処理 ---
-# ⚠️ ここから下が重要です
-if auth_status:
-    # ログイン成功時：ここから下のすべての行の先頭に「半角スペース4つ」を入れています
-    if auth_status:
 if auth_status:
     st.title("勉強管理")
 
@@ -147,7 +143,6 @@ if auth_status:
     # --- メインエリア：進捗状況 ---
     st.header(f"目標: {EX_NAME}")
     
-    # 総合進捗メトリクス
     m1, m2, m3 = st.columns(3)
     total_h = df_log["hours"].sum() if not df_log.empty else 0
     days_left = (EX_DATE - datetime.date.today()).days
@@ -205,8 +200,6 @@ if auth_status:
             if not sub_df.empty:
                 st.line_chart(sub_df.set_index("date")["hours"])
                 st.write(f"{target} の合計学習時間: {sub_df['hours'].sum():.1f} 時間")
-            else:
-                st.caption("選択した教科のデータがありません")
 
 elif auth_status is False:
     st.error("ユーザー名またはパスワードが正しくありません")
