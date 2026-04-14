@@ -77,8 +77,8 @@ if auth_mode == "新規登録":
         
         if submit_button:
             if new_username and new_display_name and new_password:
-                # パスワードのハッシュ化（セキュリティ対策）
-                hashed_pw = stauth.Hasher([new_password]).generate()[0]
+                # パスワードのハッシュ化（最新の文法に修正済み）
+                hashed_pw = stauth.Hasher.hash(new_password)
                 try:
                     conn.table("users").insert({
                         "username": new_username,
@@ -87,7 +87,7 @@ if auth_mode == "新規登録":
                     }).execute()
                     st.success("登録に成功しました。ログインモードに切り替えてログインしてください。")
                 except Exception as e:
-                    st.error(f"登録エラー（既に存在するIDの可能性があります）")
+                    st.error(f"登録エラー: IDが既に使用されている可能性があります")
             else:
                 st.warning("すべての項目を入力してください")
 
@@ -133,11 +133,11 @@ else:
             for _, row in df_subjects.iterrows():
                 c1, c2 = st.columns([3, 1])
                 c1.caption(row["subject_name"])
-                if c2.button("削", key=f"sub_del_{row['id']}"):
+                if c2.button("削除", key=f"sub_del_{row['id']}"):
                     conn.table("user_subjects").delete().eq("id", row["id"]).execute()
                     st.rerun()
 
-        # 目標設定
+        # 全体の目標設定
         with st.sidebar.expander("全体の目標設定"):
             new_name = st.text_input("目標の名前", EX_NAME)
             new_date = st.date_input("最終目標日", EX_DATE)
@@ -149,24 +149,28 @@ else:
                 }).execute()
                 st.rerun()
 
-        # イベント管理
+        # 検定・イベント管理
         with st.sidebar.expander("検定・イベント管理"):
             ev_name = st.text_input("検定名")
             ev_date = st.date_input("試験予定日", datetime.date.today())
             if st.button("イベント登録"):
                 if ev_name:
-                    conn.table("events").insert({"username": username, "event_name": ev_name, "event_date": str(ev_date)}).execute()
+                    conn.table("events").insert({
+                        "username": username, 
+                        "event_name": ev_name, 
+                        "event_date": str(ev_date)
+                    }).execute()
                     st.rerun()
             
             if not df_events.empty:
                 for _, ev in df_events.iterrows():
                     ec1, ec2 = st.columns([3, 1])
-                    ec1.caption(f"{ev['event_name']}")
-                    if ec2.button("削除", key=f"ev_del_{ev['id']}"):
+                    ec1.caption(ev['event_name'])
+                    if ec2.button("×", key=f"ev_del_{ev['id']}"):
                         conn.table("events").delete().eq("id", ev['id']).execute()
                         st.rerun()
 
-        # 学習記録
+        # 学習記録入力
         st.sidebar.divider()
         st.sidebar.subheader("学習記録の入力")
         in_date = st.sidebar.date_input("実施日", datetime.date.today())
@@ -194,6 +198,7 @@ else:
         m3.metric("進捗率", f"{prog}%")
         st.progress(prog / 100)
 
+        # カウントダウン表示
         if not df_events.empty:
             st.subheader("検定カウントダウン")
             ev_cols = st.columns(len(df_events[:4]))
@@ -202,7 +207,7 @@ else:
                 ev_cols[i].metric(ev['event_name'], f"{max(0, d_left)} 日")
 
         st.divider()
-        tab1, tab2, tab3 = st.tabs(["学習推移", "履歴編集", "教科詳細"])
+        tab1, tab2, tab3 = st.tabs(["学習推移", "履歴編集", "教科分析"])
         
         with tab1:
             if not df_log.empty:
@@ -228,11 +233,11 @@ else:
 
         with tab3:
             if not df_log.empty:
-                target = st.selectbox("分析対象", df_subjects["subject_name"].tolist())
+                target = st.selectbox("分析対象の教科", df_subjects["subject_name"].tolist())
                 sub_df = df_log[df_log["subject"] == target]
                 if not sub_df.empty:
                     st.line_chart(sub_df.set_index("date")["hours"])
-                    st.write(f"合計学習時間: {sub_df['hours'].sum():.1f} 時間")
+                    st.write(f"この教科の累計学習時間: {sub_df['hours'].sum():.1f} 時間")
 
     elif auth_status is False:
         st.error("ユーザー名またはパスワードが正しくありません")
