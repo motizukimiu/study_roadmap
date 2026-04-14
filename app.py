@@ -5,7 +5,7 @@ import datetime
 import streamlit_authenticator as stauth
 
 # ページ基本設定
-st.set_page_config(page_title="勉強管理システム", layout="wide")
+st.set_page_config(page_title="勉強記録", layout="wide")
 
 # --- 0. データベース接続 ---
 try:
@@ -46,12 +46,16 @@ def get_user_config(username):
 
 def get_user_subjects(username):
     try:
-        res = conn.table("user_subjects").select("subject_name, color").eq("username", username).execute()
+        res = conn.table("user_subjects").select("id, subject_name, color").eq("username", username).execute()
         if res.data:
-            return {r["subject_name"]: r["color"] for r in res.data}
+            return pd.DataFrame(res.data)
     except Exception:
         pass
-    return {"Python": "#c68eff", "基本情報技術者": "#ff8ec6", "その他": "#ffc68e"}
+    # 初期データ
+    return pd.DataFrame([
+        {"id": 0, "subject_name": "Python", "color": "#c68eff"},
+        {"id": 1, "subject_name": "基本情報技術者", "color": "#ff8ec6"}
+    ])
 
 # --- 2. 認証処理 ---
 credentials = get_all_credentials()
@@ -62,32 +66,55 @@ authenticator = stauth.Authenticate(
     cookie_expiry_days=30
 )
 
-# ログインフォームを表示
 authenticator.login("main")
 
-# セッション状態から情報を取得
 auth_status = st.session_state.get("authentication_status")
 name = st.session_state.get("name")
 username = st.session_state.get("username")
 
 # --- 3. メイン処理 ---
 if auth_status:
-    st.title("勉強管理")
+    st.title("勉強記録")
 
-    # データ同期
+    # ユーザー設定と教科データの取得
     EX_NAME, EX_DATE, GOAL_H = get_user_config(username)
-    SUBJECTS = get_user_subjects(username)
+    df_subjects = get_user_subjects(username)
+    # グラフの色指定用に辞書化
+    subject_colors = dict(zip(df_subjects["subject_name"], df_subjects["color"]))
     
-    # 勉強記録とイベントの読み取り
+    # 学習記録とイベントの読み取り
     log_res = conn.table("logs").select("*").eq("username", username).execute()
     df_log = pd.DataFrame(log_res.data)
     
     event_res = conn.table("events").select("*").eq("username", username).order("event_date").execute()
     df_events = pd.DataFrame(event_res.data)
 
-    # サイドバー設定
+    # --- サイドバー設定 ---
     st.sidebar.subheader(f"ユーザー: {name}")
     authenticator.logout("ログアウト", "sidebar")
+
+    # サイドバー：教科の管理
+    with st.sidebar.expander("教科の編集"):
+        st.write("新しい教科を追加")
+        new_sub = st.text_input("教科名")
+        new_color = st.color_picker("ラベルの色", "#00f900")
+        if st.button("教科を追加"):
+            if new_sub:
+                conn.table("user_subjects").insert({
+                    "username": username, 
+                    "subject_name": new_sub, 
+                    "color": new_color
+                }).execute()
+                st.rerun()
+
+        st.divider()
+        st.write("既存の教科を削除")
+        for _, row in df_subjects.iterrows():
+            c1, c2 = st.columns([3, 1])
+            c1.caption(row["subject_name"])
+            if c2.button("削除", key=f"sub_del_{row['id']}"):
+                conn.table("user_subjects").delete().eq("id", row["id"]).execute()
+                st.rerun()
 
     # サイドバー：目標設定
     with st.sidebar.expander("全体の目標設定"):
@@ -102,30 +129,11 @@ if auth_status:
             st.toast("目標を更新しました")
             st.rerun()
 
-    # サイドバー：検定イベント管理
-    with st.sidebar.expander("検定・イベント管理"):
-        ev_name = st.text_input("検定名")
-        ev_date = st.date_input("試験予定日", datetime.date.today())
-        if st.button("イベント登録"):
-            if ev_name:
-                conn.table("events").insert({"username": username, "event_name": ev_name, "event_date": str(ev_date)}).execute()
-                st.toast(f"{ev_name}を登録しました")
-                st.rerun()
-        
-        if not df_events.empty:
-            st.divider()
-            for _, ev in df_events.iterrows():
-                ec1, ec2 = st.columns([3, 1])
-                ec1.caption(f"{ev['event_name']}")
-                if ec2.button("削除", key=f"ev_del_{ev['id']}"):
-                    conn.table("events").delete().eq("id", ev['id']).execute()
-                    st.rerun()
-
     # サイドバー：新規学習記録
     st.sidebar.divider()
     st.sidebar.subheader("今日の学習を記録")
     in_date = st.sidebar.date_input("実施日", datetime.date.today())
-    in_sub = st.sidebar.selectbox("教科", list(SUBJECTS.keys()))
+    in_sub = st.sidebar.selectbox("教科", df_subjects["subject_name"].tolist())
     in_hour = st.sidebar.number_input("学習時間(h)", min_value=0.1, max_value=24.0, step=0.5)
     in_note = st.sidebar.text_area("内容メモ")
     
@@ -171,7 +179,8 @@ if auth_status:
     with tab1:
         if not df_log.empty:
             chart_data = df_log.groupby(["date", "subject"])["hours"].sum().unstack().fillna(0)
-            colors = [SUBJECTS.get(s, "#cccccc") for s in chart_data.columns]
+            # グラフの色を教科設定に合わせる
+            colors = [subject_colors.get(s, "#cccccc") for s in chart_data.columns]
             st.bar_chart(chart_data, color=colors)
         else:
             st.info("学習データを入力するとグラフが表示されます")
@@ -195,7 +204,7 @@ if auth_status:
 
     with tab3:
         if not df_log.empty:
-            target = st.selectbox("分析する教科を選択", list(SUBJECTS.keys()))
+            target = st.selectbox("分析する教科を選択", df_subjects["subject_name"].tolist())
             sub_df = df_log[df_log["subject"] == target]
             if not sub_df.empty:
                 st.line_chart(sub_df.set_index("date")["hours"])
