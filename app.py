@@ -75,7 +75,7 @@ username = st.session_state.get("username")
 if auth_status:
     st.title("勉強記録")
 
-    # データ同期
+    # データの最新化
     EX_NAME, EX_DATE, GOAL_H = get_user_config(username)
     df_subjects = get_user_subjects(username)
     subject_colors = dict(zip(df_subjects["subject_name"], df_subjects["color"]))
@@ -90,12 +90,12 @@ if auth_status:
     st.sidebar.subheader(f"ユーザー: {name}")
     authenticator.logout("ログアウト", "sidebar")
 
-    # A. 教科の管理（追加・削除）
+    # A. 教科の編集（追加・削除）
     with st.sidebar.expander("教科の編集"):
         st.write("新規教科を追加")
-        new_sub = st.text_input("教科名")
-        new_color = st.color_picker("ラベルの色", "#00f900")
-        if st.button("教科を追加"):
+        new_sub = st.text_input("教科名を入力")
+        new_color = st.color_picker("ラベルの色を選択", "#00f900")
+        if st.button("追加実行"):
             if new_sub:
                 conn.table("user_subjects").insert({
                     "username": username, "subject_name": new_sub, "color": new_color
@@ -111,7 +111,7 @@ if auth_status:
                 conn.table("user_subjects").delete().eq("id", row["id"]).execute()
                 st.rerun()
 
-    # B. 目標設定
+    # B. 全体の目標設定
     with st.sidebar.expander("全体の目標設定"):
         new_name = st.text_input("目標の名前", EX_NAME)
         new_date = st.date_input("最終目標日", EX_DATE)
@@ -144,6 +144,7 @@ if auth_status:
     st.sidebar.divider()
     st.sidebar.subheader("学習記録の入力")
     in_date = st.sidebar.date_input("実施日", datetime.date.today())
+    # 取得した教科データからプルダウンを作成
     in_sub = st.sidebar.selectbox("教科", df_subjects["subject_name"].tolist())
     in_hour = st.sidebar.number_input("時間(h)", min_value=0.1, max_value=24.0, step=0.5)
     in_note = st.sidebar.text_area("内容メモ")
@@ -153,6 +154,7 @@ if auth_status:
             "username": username, "date": str(in_date), 
             "hours": in_hour, "subject": in_sub, "content": in_note
         }).execute()
+        st.toast("記録しました")
         st.rerun()
 
     # --- メインエリア：進捗状況 ---
@@ -168,7 +170,7 @@ if auth_status:
     m3.metric("進捗率", f"{prog}%")
     st.progress(prog / 100)
 
-    # 検定カウントダウン
+    # 検定カウントダウン表示
     if not df_events.empty:
         st.subheader("検定カウントダウン")
         ev_cols = st.columns(len(df_events[:4]))
@@ -184,6 +186,7 @@ if auth_status:
     with tab1:
         if not df_log.empty:
             chart_data = df_log.groupby(["date", "subject"])["hours"].sum().unstack().fillna(0)
+            # 各教科の色をリスト化して適用
             colors = [subject_colors.get(s, "#cccccc") for s in chart_data.columns]
             st.bar_chart(chart_data, color=colors)
         else:
@@ -196,8 +199,8 @@ if auth_status:
                 with st.expander(f"{row['date']} | {row['subject']} | {row['hours']}h"):
                     c1, c2 = st.columns([4, 1])
                     with c1:
-                        edit_c = st.text_input("内容", value=row["content"], key=f"c_{row['id']}")
-                        edit_h = st.number_input("時間", value=float(row["hours"]), min_value=0.1, key=f"h_{row['id']}")
+                        edit_c = st.text_input("内容編集", value=row["content"], key=f"c_{row['id']}")
+                        edit_h = st.number_input("時間編集", value=float(row["hours"]), min_value=0.1, key=f"h_{row['id']}")
                     with c2:
                         if st.button("更新", key=f"upd_{row['id']}"):
                             conn.table("logs").update({"content": edit_c, "hours": edit_h}).eq("id", row["id"]).execute()
